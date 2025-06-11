@@ -1,0 +1,37 @@
+services:
+  app:
+    environment:
+      APP_ENV: dev
+      CADDY_DEBUG: "true"
+      XDEBUG_MODE: "debug,develop"
+    ports:
+      - "8000:80"
+      - "5173:5173"  # Vite frontend
+
+  mailhog:
+    environment:
+      MH_UI_BIND_ADDR: 0.0.0.0:8025
+      MH_API_BIND_ADDR: 0.0.0.0:8025
+
+  db-admin:
+    environment:
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "false"
+      
+  code-quality:
+    environment:
+      SONAR_FORCE_AUTHENTICATION: "false"
+
+  sonar-scanner:
+    image: sonarsource/sonar-scanner-cli
+    profiles: ["ci", "dev"]
+    networks: [autocondat-network]
+    depends_on:
+      code-quality: { condition: service_healthy }
+    command: >
+      -Dsonar.projectKey=autocondat
+      -Dsonar.sources=/app
+      -Dsonar.host.url=http://code-quality:9000
+      -Dsonar.login=admin
+      -Dsonar.password=admin
+    volumes:
+      - ./autocondat7:/app
