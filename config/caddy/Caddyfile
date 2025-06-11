@@ -1,13 +1,18 @@
-:80, :443
-root * /app/public
-encode zstd gzip
-file_server
+:443 {
+    tls internal
+    root * /app/public
+    encode zstd gzip
+    php_server
+    file_server
 
-# ↓ FrankenPHP worker – front-controller pattern
-php_fastcgi unix//run/php/php.sock {
-    env APP_ENV ${APP_ENV}
+    storage file_system {
+        root /app/storage/caddy
+    }
 }
 
-# Force HTTPS in prod (leave commented in local dev)
-# @http  method GET
-# redir @http https://{host}{uri}
+:80 {
+    root * /app/public
+    encode zstd gzip
+    php_server
+    file_server
+}

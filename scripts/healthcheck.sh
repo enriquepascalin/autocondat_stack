@@ -1,38 +1,24 @@
 #!/usr/bin/env bash
-# scripts/healthcheck.sh – unified health probe for the Autocondat stack
 set -euo pipefail
 
-# -------- helper -------------------------------------------------------------
-# Runs the given command; on non-zero exit prints a custom error then aborts.
-check() {
-  "$@" || { echo "ERROR: $* failed"; exit 1; }
+# ------ container state ------------------------------------------------------
+is_running() {
+  docker compose ps --format json \
+  | jq -e --arg svc "$1" '
+       select(.Service==$svc) | select(.State=="running")
+    ' >/dev/null                   # works with Compose ≥2.21 JSON stream:contentReference[oaicite:8]{index=8}:contentReference[oaicite:9]{index=9}
 }
 
-# -------- generic container state -------------------------------------------
-services=( db cache messaging app mailhog code-quality )
-
-for srv in "${services[@]}"; do
-  docker compose ps --format json "$srv" | jq -e '.[0].State=="running"' >/dev/null \
-    || { echo "ERROR: Service $srv is not running"; exit 1; }
+for s in db cache messaging code-quality app mailhog; do
+  is_running "$s" || { echo "ERROR: $s not running"; exit 1; }
 done
 
-# -------- service-specific probes -------------------------------------------
-# PostgreSQL – waits until the DB accepts connections
-check docker compose exec db pg_isready -U autocondat -d autocondat
-
-# Redis – AUTH required; ping must return PONG
-check docker compose exec cache redis-cli -a redis ping | grep -q PONG
-
-# RabbitMQ – status must include "running"
-check docker compose exec messaging rabbitmqctl status | grep -q running
-
-# Symfony application HTTP health endpoint (returns 200/OK)
-check curl -fs http://localhost:8000/health
-
-# MailHog UI reachable
-check curl -fs http://localhost:8025
-
-# SonarQube reports status "UP"
-check curl -fs http://localhost:9000/api/system/status | jq -e '.status=="UP"'
+# ------ deep probes ----------------------------------------------------------
+docker compose exec db pg_isready -U autocondat -d autocondat >/dev/null
+docker compose exec cache redis-cli -a redis ping | grep -q PONG
+docker compose exec messaging rabbitmq-diagnostics -q ping               # no curl needed
+curl -fs http://localhost:8000/health >/dev/null
+curl -fs http://localhost:8025        >/dev/null
+curl -fs http://localhost:9000/api/system/status | jq -e '.status=="UP"' >/dev/null
 
 echo "✅  All services are healthy"
